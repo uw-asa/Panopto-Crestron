@@ -1,0 +1,576 @@
+/*
+Dealer Name:         University of Washington - CSS
+Programmer:          Tim Batzel
+
+*/
+    
+
+
+
+/*******************************************************************************************
+Compiler Directives
+*******************************************************************************************/
+#CATEGORY "46" "UW/CTE Custom Modules"
+// #DEFINE_CONSTANT deug 0
+#PRINT_TO_TRACE
+#DEFAULT_VOLATILE
+#ENABLE_STACK_CHECKING
+#ENABLE_TRACE
+#ENCODING_ASCII
+              
+
+
+#HELP_BEGIN
+#HELP_END
+
+
+
+
+/*******************************************************************************************
+  DIGITAL, ANALOG and SERIAL INPUTS and OUTPUTS
+*******************************************************************************************/
+
+DIGITAL_INPUT debug;
+DIGITAL_INPUT _skip_, get_status;
+DIGITAL_INPUT _skip_, action_adhoc, action_start, action_schedule, action_extend, action_stop, action_nobroadcast, action_broadcast;
+
+STRING_INPUT  _skip_, panopto_host[64], panopto_get_url[64], panopto_id[64];
+
+DIGITAL_OUTPUT _skip_, _skip_, has_session;
+DIGITAL_OUTPUT _skip_, has_action_adhoc, has_action_start, has_action_schedule, has_action_extend, has_action_stop, has_action_nobroadcast, has_action_broadcast;
+
+STRING_OUTPUT _skip_, host_connect_status;
+STRING_OUTPUT _skip_, rec_status, rec_space_name;
+STRING_OUTPUT _skip_, session_name, session_state, session_folder, session_is_broadcast, session_start, session_end, session_min_to_start, session_min_to_end, session_viewer_url;
+
+ANALOG_OUTPUT _skip_, session_min_to_start_analog, connect_error_count_analog, session_camera_preset;
+
+//Sockets
+TCP_CLIENT panopto_api_Client[4000], panopto_api_Client_Action[800];
+                                  
+
+/****************************************************************************************z***
+  Global Variables
+*******************************************************************************************/
+
+
+NONVOLATILE STRING g_panopto_id[64];      // Holds Recorder ID = R25 unique id or Panopto GUID
+NONVOLATILE STRING g_panopto_host[64];
+NONVOLATILE STRING g_panopto_get_url[64];
+
+STRING g_panopto_action[64];  // ?action=adhoc
+STRING g_PanoptoDataRx[4000];                 // to receive SocketRxBuf
+                                 
+INTEGER g_host_connect_error_count;
+
+
+
+/*******************************************************************************************
+  Functions
+*******************************************************************************************/
+      
+    
+FUNCTION panopto_status()
+{
+	INTEGER iLoc1, iLoc2;
+    STRING sTemp_var[64];
+                
+	// Check if XML Feed has a recorder entry
+	iLoc1 = 0;
+	iLoc1 = find("<recorder>", g_PanoptoDataRx, 1);
+	if (iLoc1)
+    {
+
+			//rec_status
+			iLoc1 = 0;
+			iLoc2 = 0;
+			sTemp_var = "";
+			iLoc1 = find("<recorder_state>", g_PanoptoDataRx, 1);    
+				if(debug) print("iLoc1 = %d", iLoc1);
+			iLoc1 = iLoc1 + 16; //   Move to next posistion after string
+			iLoc2 = find("</recorder_state>", g_PanoptoDataRx, (iLoc1) );
+				if(debug) print("iLoc2 = %d", iLoc2);
+			sTemp_var = mid(g_PanoptoDataRx, (iLoc1), (iLoc2-iLoc1));
+				if(debug) print("recorder_state = %s", sTemp_var);
+			rec_status = sTemp_var;
+		
+		
+			//rec_space_name
+			iLoc1 = 0;
+			iLoc2 = 0;
+			sTemp_var = "";
+			iLoc1 = find("<recorder_name>", g_PanoptoDataRx, 1);    
+				if(debug) print("iLoc1 = %d", iLoc1);
+			iLoc1 = iLoc1 + 15; //   Move to next posistion after string
+			iLoc2 = find("</recorder_name>", g_PanoptoDataRx, (iLoc1) );
+				if(debug) print("iLoc2 = %d", iLoc2);
+			sTemp_var = mid(g_PanoptoDataRx, (iLoc1), (iLoc2-iLoc1));
+				if(debug) print("recorder_name = %s", sTemp_var);
+			rec_space_name = sTemp_var;
+    }
+      else
+	{
+			rec_status = "";
+			rec_space_name = "";
+	}
+
+	// Check if XML Feed has a session entry
+	iLoc1 = 0;
+	iLoc1 = find("<session>", g_PanoptoDataRx, 1);
+	if (iLoc1)
+    {
+
+			has_session = 1;			
+
+			//session_name
+			iLoc1 = 0;
+			iLoc2 = 0;
+			sTemp_var = "";
+			iLoc1 = find("<session_name>", g_PanoptoDataRx, 1);    
+				if(debug) print("iLoc1 = %d", iLoc1);
+			iLoc1 = iLoc1 + 14; //   Move to next posistion after string
+			iLoc2 = find("</session_name>", g_PanoptoDataRx, (iLoc1) );
+				if(debug) print("iLoc2 = %d", iLoc2);
+			sTemp_var = mid(g_PanoptoDataRx, (iLoc1), (iLoc2-iLoc1));
+				if(debug) print("session_name = %s", sTemp_var);
+			session_name = sTemp_var;
+		
+			//session_state
+			iLoc1 = 0;
+			iLoc2 = 0;
+			sTemp_var = "";
+			iLoc1 = find("<session_state>", g_PanoptoDataRx, 1);    
+				if(debug) print("iLoc1 = %d", iLoc1);
+			iLoc1 = iLoc1 + 15; //   Move to next posistion after string
+			iLoc2 = find("</session_state>", g_PanoptoDataRx, (iLoc1) );
+				if(debug) print("iLoc2 = %d", iLoc2);
+			sTemp_var = mid(g_PanoptoDataRx, (iLoc1), (iLoc2-iLoc1));
+				if(debug) print("session_state = %s", sTemp_var);
+			session_state = sTemp_var;
+		
+			//session_folder
+			iLoc1 = 0;
+			iLoc2 = 0;
+			sTemp_var = "";
+			iLoc1 = find("<session_folder>", g_PanoptoDataRx, 1);    
+				if(debug) print("iLoc1 = %d", iLoc1);
+			iLoc1 = iLoc1 + 16; //   Move to next posistion after string
+			iLoc2 = find("</session_folder>", g_PanoptoDataRx, (iLoc1) );
+				if(debug) print("iLoc2 = %d", iLoc2);
+			sTemp_var = mid(g_PanoptoDataRx, (iLoc1), (iLoc2-iLoc1));
+				if(debug) print("session_folder = %s", sTemp_var);
+			session_folder = sTemp_var;
+		
+			//session_is_broadcast
+			iLoc1 = 0;
+			iLoc2 = 0;
+			sTemp_var = "";
+			iLoc1 = find("<session_is_broadcast>", g_PanoptoDataRx, 1);    
+				if(debug) print("iLoc1 = %d", iLoc1);
+			iLoc1 = iLoc1 + 22; //   Move to next posistion after string
+			iLoc2 = find("</session_is_broadcast>", g_PanoptoDataRx, (iLoc1) );
+				if(debug) print("iLoc2 = %d", iLoc2);
+			sTemp_var = mid(g_PanoptoDataRx, (iLoc1), (iLoc2-iLoc1));
+				if(debug) print("session_is_broadcast = %s", sTemp_var);
+			session_is_broadcast = sTemp_var;
+		
+			//session_start
+			iLoc1 = 0;
+			iLoc2 = 0;
+			sTemp_var = "";
+			iLoc1 = find("<session_start>", g_PanoptoDataRx, 1);    
+				if(debug) print("iLoc1 = %d", iLoc1);
+			iLoc1 = iLoc1 + 15; //   Move to next posistion after string
+			iLoc2 = find("</session_start>", g_PanoptoDataRx, (iLoc1) );
+				if(debug) print("iLoc2 = %d", iLoc2);
+			sTemp_var = mid(g_PanoptoDataRx, (iLoc1), (iLoc2-iLoc1));
+				if(debug) print("session_start = %s", sTemp_var);
+			session_start = sTemp_var;
+		
+			//session_end
+			iLoc1 = 0;
+			iLoc2 = 0;
+			sTemp_var = "";
+			iLoc1 = find("<session_end>", g_PanoptoDataRx, 1);    
+				if(debug) print("iLoc1 = %d", iLoc1);
+			iLoc1 = iLoc1 + 13; //   Move to next posistion after string
+			iLoc2 = find("</session_end>", g_PanoptoDataRx, (iLoc1) );
+				if(debug) print("iLoc2 = %d", iLoc2);
+			sTemp_var = mid(g_PanoptoDataRx, (iLoc1), (iLoc2-iLoc1));
+				if(debug) print("session_end = %s", sTemp_var);
+			session_end = sTemp_var;
+		     
+			//session_min_to_start
+			iLoc1 = 0;
+			iLoc2 = 0;
+			sTemp_var = "";
+			iLoc1 = find("<session_min_to_start>", g_PanoptoDataRx, 1);    
+				if(debug) print("iLoc1 = %d", iLoc1);
+			iLoc1 = iLoc1 + 22; //   Move to next posistion after string
+			iLoc2 = find("</session_min_to_start>", g_PanoptoDataRx, (iLoc1) );
+				if(debug) print("iLoc2 = %d", iLoc2);
+			sTemp_var = mid(g_PanoptoDataRx, (iLoc1), (iLoc2-iLoc1));
+				if(debug) print("session_min_to_start = %s", sTemp_var);
+			session_min_to_start = sTemp_var;
+                                                       
+				// Create a Signed Integer		
+				IF(FIND("-",sTemp_var))
+					{session_min_to_start_analog = -ATOI(sTemp_var);}
+				ELSE 
+	  				{session_min_to_start_analog = ATOI(sTemp_var);}
+		
+				if(debug) print("session_min_to_start_analog: = %d", session_min_to_start_analog);
+
+
+		
+			//session_min_to_end
+			iLoc1 = 0;
+			iLoc2 = 0;
+			sTemp_var = "";
+			iLoc1 = find("<session_min_to_end>", g_PanoptoDataRx, 1);    
+				if(debug) print("iLoc1 = %d", iLoc1);
+			iLoc1 = iLoc1 + 20; //   Move to next posistion after string
+			iLoc2 = find("</session_min_to_end>", g_PanoptoDataRx, (iLoc1) );
+				if(debug) print("iLoc2 = %d", iLoc2);
+			sTemp_var = mid(g_PanoptoDataRx, (iLoc1), (iLoc2-iLoc1));
+				if(debug) print("session_min_to_end = %s", sTemp_var);
+			session_min_to_end = sTemp_var;
+
+
+			//<session_viewer_url>      
+			iLoc1 = 0;
+			iLoc1 = find("<session_viewer_url>", g_PanoptoDataRx, 1);
+			if (iLoc1)
+            	{
+					iLoc1 = 0;
+					iLoc2 = 0;
+					sTemp_var = "";
+					iLoc1 = find("<session_viewer_url>", g_PanoptoDataRx, 1);    
+						if(debug) print("iLoc1 = %d", iLoc1);
+					iLoc1 = iLoc1 + 20; //   Move to next posistion after string
+					iLoc2 = find("</session_viewer_url>", g_PanoptoDataRx, (iLoc1) );
+						if(debug) print("iLoc2 = %d", iLoc2);
+					sTemp_var = mid(g_PanoptoDataRx, (iLoc1), (iLoc2-iLoc1));
+						if(debug) print("session_viewer_url = %s", sTemp_var);
+					session_viewer_url = sTemp_var;
+                }
+			else {session_viewer_url = "";}
+
+
+			//<session_camera_preset>      
+			iLoc1 = 0;
+			iLoc1 = find("<session_camera_preset>", g_PanoptoDataRx, 1);
+			if (iLoc1)
+            	{
+					iLoc1 = 0;
+					iLoc2 = 0;
+					sTemp_var = "";
+					iLoc1 = find("<session_camera_preset>", g_PanoptoDataRx, 1);    
+						if(debug) print("iLoc1 = %d", iLoc1);
+					iLoc1 = iLoc1 + 23; //   Move to next posistion after string
+					iLoc2 = find("</session_camera_preset>", g_PanoptoDataRx, (iLoc1) );
+						if(debug) print("iLoc2 = %d", iLoc2);
+					sTemp_var = mid(g_PanoptoDataRx, (iLoc1), (iLoc2-iLoc1));
+						if(debug) print("session_camera_preset string = %s", sTemp_var);
+					session_camera_preset = ATOI(sTemp_var);
+                }
+			else {session_camera_preset = 0;}
+		   	if(debug) print("session_camera_preset = %d", session_camera_preset);
+
+
+
+	}
+	else
+	{
+			has_session = 0;
+			session_name = "";
+			session_state = "";
+			session_folder = "";
+			session_is_broadcast = "";
+			session_start = "";
+			session_end = "";
+			session_min_to_start = "";
+			session_min_to_start_analog = 0;
+			session_min_to_end = "";
+			session_viewer_url = "";
+			session_camera_preset = 0;
+
+	}
+
+                                             
+	//Query Actions
+
+	//has_action_adhoc
+	iLoc1 = find("<action_adhoc>", g_PanoptoDataRx, 1);    	
+	if (iLoc1) {has_action_adhoc = 1;}
+		else {has_action_adhoc = 0;}
+
+	//has_action_start
+	iLoc1 = find("<action_start>", g_PanoptoDataRx, 1);    	
+	if (iLoc1) {has_action_start = 1;}
+		else {has_action_start = 0;}
+
+	//has_action_schedule
+	iLoc1 = find("<action_schedule>", g_PanoptoDataRx, 1);    	
+	if (iLoc1) {has_action_schedule = 1;}
+		else {has_action_schedule = 0;}
+
+	//has_action_extend
+	iLoc1 = find("<action_extend>", g_PanoptoDataRx, 1);    	
+	if (iLoc1) {has_action_extend = 1;}
+		else {has_action_extend = 0;}
+
+	//has_action_stop
+	iLoc1 = find("<action_stop>", g_PanoptoDataRx, 1);    	
+	if (iLoc1) {has_action_stop = 1;}
+		else {has_action_stop = 0;}
+
+	//has_action_nobroadcast
+	iLoc1 = find("<action_nobroadcast>", g_PanoptoDataRx, 1);    	
+	if (iLoc1) {has_action_nobroadcast = 1;}
+		else {has_action_nobroadcast = 0;}
+
+	//has_action_broadcast
+	iLoc1 = find("<action_broadcast>", g_PanoptoDataRx, 1);    	
+	if (iLoc1) {has_action_broadcast = 1;}
+		else {has_action_broadcast = 0;}
+}
+      
+
+
+
+FUNCTION host_connect_status_function(INTEGER Var1)
+{
+	if(debug) print("Host Connect Status Function");
+    
+      
+	// Status 1 "Connected"
+	if (Var1 = 1)
+	{
+		g_host_connect_error_count = 0;
+		connect_error_count_analog = g_host_connect_error_count;
+		if(debug) print("Error Count: = %d", g_host_connect_error_count);
+		host_connect_status = "Connected";
+	}
+
+	// Status 0 "Error"; increment error count
+	if (Var1 = 0)
+ 	{
+		g_host_connect_error_count = g_host_connect_error_count + 1;	
+		connect_error_count_analog = g_host_connect_error_count;
+		if(debug) print("Error Count: = %d", g_host_connect_error_count);
+		host_connect_status = "Error";
+	}
+ 
+
+
+                          
+     
+	// When the number of errors is above 5, clear the outputs of current data. 
+	if (g_host_connect_error_count > 5)
+		{
+	      	if(debug) print("Clearing status, due to connection errors");
+            
+			rec_status = "";
+			rec_space_name = "";
+			
+			has_session = 0;
+			session_name = "";
+			session_state = "";
+			session_folder = "";
+			session_is_broadcast = "";
+			session_start = "";
+			session_end = "";
+			session_min_to_start = "";
+			session_min_to_start_analog = 0;
+			session_min_to_end = "";
+			session_viewer_url = "";
+			session_camera_preset = 0;
+		}
+         
+	if (g_host_connect_error_count >= 65530) // 
+		{
+			g_host_connect_error_count = 1; // Reset counter, to 1 error.
+			connect_error_count_analog = g_host_connect_error_count;
+		}
+
+
+
+
+}
+
+
+
+
+/******************************************************************************************
+  Event Handlers
+*******************************************************************************************/
+
+PUSH get_status
+{
+  	SIGNED_INTEGER status_err, status_discnt_err;
+                              
+	if (len(panopto_id) >= 1)
+	{
+		g_panopto_id = panopto_id;
+		g_panopto_host = panopto_host;
+		g_panopto_get_url = panopto_get_url;
+	
+	    status_err = SOCKETCONNECTCLIENT(panopto_api_Client, g_panopto_host, 80, 0);        // Connect to server, return status
+		if(debug) print("Connection Status = %d", status_err);
+
+      	// DISCONNECT ON ERROR (2nd attempt)
+		if(status_err < 0)
+        {
+			host_connect_status_function(0);
+			print("Error: SocketConnectClient: Host(server name)");
+			if(debug) print("Error: Attempting disconnect");
+			status_discnt_err = SocketDisconnectClient(panopto_api_Client);
+		 	if(debug) print("Disconnect Status = %d", status_discnt_err);
+		}
+	}         
+}    
+ 
+
+
+
+
+
+
+
+
+SOCKETCONNECT panopto_api_Client // Triggers when socket is connected
+{
+   SIGNED_INTEGER status_err;
+   STRING sCMD[255];
+
+   sCMD = "GET " + g_panopto_get_url + g_panopto_id + " HTTP/1.1" + "\n" + "Host: " + g_panopto_host +"\n\n";  // Trial and error, says we need the "Host:" often.
+      if(debug) print("Get Command = %s", sCMD);
+                                              
+   status_err = SOCKETSEND(panopto_api_Client, sCMD);
+      if(debug) print("Send Status = %d", status_err);
+
+	if(status_err < 0)
+        {
+		host_connect_status_function(0);
+		print("Error: SocketConnect: Host+URL+ID");
+		}
+
+  
+}      
+       
+
+SOCKETRECEIVE panopto_api_Client       // Triggers when socket is connected & receiving. ;  (Pre) THREADSAFE = new prevents a reentry error (can't thread, so single instance)
+{
+	INTEGER iLoc1;
+   
+   if(debug) print("Socket Receive Function");
+  
+	iLoc1 = 0;          
+	iLoc1 = find("</remoterecorderstate>", panopto_api_Client.SocketRxBuf, 1);
+	if (iLoc1)
+		{
+		g_PanoptoDataRx = gather("</remoterecorderstate>", panopto_api_Client.SocketRxBuf);
+		host_connect_status = "Connected";
+		host_connect_status_function(1);
+		}
+	else {
+		print("Error: SocketReceive: No RemoteRecorder XML End Tag");
+		host_connect_status_function(0);;
+		}
+              
+   CLEARBUFFER(panopto_api_Client.SocketRxBuf);         // Clear buffer
+   SOCKETDISCONNECTCLIENT(panopto_api_Client);          // Disconenct socket
+   panopto_status();                               		// Run parse function
+}      
+              
+
+ 
+
+PUSH action_adhoc
+PUSH action_start
+PUSH action_schedule
+PUSH action_extend
+PUSH action_stop
+PUSH action_nobroadcast
+PUSH action_broadcast
+{
+
+  	SIGNED_INTEGER status_err, status_discnt_err;
+
+	g_panopto_action = "";
+
+	IF (action_adhoc)				{	g_panopto_action = "?action=adhoc";}
+	ELSE IF (action_start)			{	g_panopto_action = "?action=start";}
+	ELSE IF (action_schedule)		{	g_panopto_action = "?action=schedule";}
+	ELSE IF (action_extend)			{	g_panopto_action = "?action=extend";}
+	ELSE IF (action_stop)			{	g_panopto_action = "?action=stop";}
+	ELSE IF (action_nobroadcast)	{	g_panopto_action = "?action=nobroadcast";}
+	ELSE IF (action_broadcast)		{	g_panopto_action = "?action=broadcast";}
+	ELSE 							{	g_panopto_action = "";}
+    
+
+
+	if (len(panopto_id) >= 1)
+	{
+		g_panopto_id = panopto_id;
+		g_panopto_host = panopto_host;
+		g_panopto_get_url = panopto_get_url;
+	
+	    status_err = SOCKETCONNECTCLIENT(panopto_api_Client_Action, g_panopto_host, 80, 0);        // Connect to server, return status
+		if(debug) print("Connection Status = %d", status_err);
+
+      	// DISCONNECT ON ERROR (2nd attempt)
+		if(status_err < 0)
+        {
+			print("Error: SocketConnectClient: Host(server name)");
+			host_connect_status_function(0);
+			if(debug) print("Error, attempting disconnect");
+			status_discnt_err = SocketDisconnectClient(panopto_api_Client_Action);
+	 		if(debug) print("Disconnect Status = %d", status_discnt_err);
+		}
+	}
+}
+
+
+
+                   
+
+
+SOCKETCONNECT panopto_api_Client_Action // Triggers when socket is connected
+{
+   SIGNED_INTEGER status_err;
+   STRING sCMD[255];
+
+   sCMD = "GET " + g_panopto_get_url + g_panopto_id + g_panopto_action + " HTTP/1.1" + "\n" + "Host: " + g_panopto_host +"\n\n";  // Trial and error, says we need the "Host:" often.
+      if(debug) print("Get Command = %s", sCMD);
+                                              
+   status_err = SOCKETSEND(panopto_api_Client_Action, sCMD);
+      if(debug) print("Send Status = %d", status_err);
+
+	if(status_err < 0)
+        {
+		host_connect_status_function(0);
+		print("Error: SocketConnect");
+		}
+
+    //SocketDisconnectClient(panopto_api_Client_Action)
+  
+}     
+
+
+
+                                                                                                                                     
+
+
+
+/*******************************************************************************************
+  Main()
+*******************************************************************************************/
+
+Function Main()
+{
+    WaitForInitializationComplete();
+}
+
+
